@@ -7,7 +7,7 @@ utilizing the MT3333 or MT3339 chipset.
  - mt333x_fw_file_info.py: Dispays the customization settings of a MT333x
    firmware file
 
-The tools currently only work with Python 2.x.
+The tools require Python 3.x (3.6+) and pySerial.
 
 **Note**: Most of the tools are written based on observing and trial-and-error.
 Especially for mt333x_fw_file_info.py there is no guarantee that the
