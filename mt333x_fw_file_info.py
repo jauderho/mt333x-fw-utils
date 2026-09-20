@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # mt333x_fw_file_info.py - Dump customization settings of a MT333x firmware file
 #
 # Copyright (c) 2016, David Imhoff <dimhoff.devel@gmail.com>

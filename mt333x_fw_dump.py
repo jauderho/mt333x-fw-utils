@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # mt333x_fw_dump.py - Tool to dump firmware from MT333x based device
 #
 # Copyright (c) 2016, David Imhoff <dimhoff.devel@gmail.com>
@@ -134,7 +134,7 @@ def main():
                 print("Warning: Unable to remove magic, Firmware to small")
             else:
                 outf.seek(0x5c)
-                outf.write("\xff\xff\xff\xff")
+                outf.write(b"\xff\xff\xff\xff")
 
     #TODO: reset the device somehow
     print("Please reset the device manually.")

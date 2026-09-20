@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # mt333x_fw_update.py - Tool to update firmware of MT333x based GPS device
 #
 # Copyright (c) 2016, David Imhoff <dimhoff.devel@gmail.com>
@@ -41,7 +41,7 @@ VERSION_MINOR=1
 
 def report_progress(cnt, total):
     """Display progress to stdout"""
-    sys.stdout.write("{:3}% {}/{}\r".format(cnt * 100 / total, cnt, total))
+    sys.stdout.write("{:3}% {}/{}\r".format(cnt * 100 // total, cnt, total))
     sys.stdout.flush()
     if cnt == total:
         print('')
