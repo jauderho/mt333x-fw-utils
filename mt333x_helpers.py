@@ -39,11 +39,11 @@ BASE_ADDR_DA = 0xc00
 def checksum_xor16(data):
     """ Calculate 16-bit XOR checksum over 'data' """
     cksum = 0
-    for i in xrange(0, len(data), 2):
+    for i in range(0, len(data) - 1, 2):
         cksum = cksum ^ struct.unpack_from(">H", data, i)[0]
 
     if len(data) % 2 != 0:
-        cksum = cksum ^ (ord(data[-1]) << 8)
+        cksum = cksum ^ (data[-1] << 8)
 
     return cksum
 
@@ -67,35 +67,33 @@ class MtkGpsBRom:
         """ Restart module into boot rom mode """
         # Restart into Boot Rom mode
         if self._dtr_reset:
-            self._ser.setDTR(1)
-            self._ser.setDTR(0)
+            self._ser.dtr = True
+            self._ser.dtr = False
         else:
             if self._nmea_baud:
-                self._ser.apply_settings({ 'baudrate': self._nmea_baud })
-                self._ser.write("$PMTK180*3B\r\n")
+                self._ser.baudrate = self._nmea_baud
+                self._ser.write(b"$PMTK180*3B\r\n")
                 self._ser.flush()
                 time.sleep(0.1)
             else:
                 for baudrate in (115200, 57600, 38400, 19200, 14400, 9600, 4800):
                     try:
-                        self._ser.apply_settings({ 'baudrate': baudrate })
-                        self._ser.write("$PMTK180*3B\r\n")
+                        self._ser.baudrate = baudrate
+                        self._ser.write(b"$PMTK180*3B\r\n")
                         self._ser.flush()
                         time.sleep(0.1)
                     except:
                         pass
 
-        self._ser.apply_settings({
-            'baudrate': self._baud,
-            'timeout': 0.005
-        })
+        self._ser.baudrate = self._baud
+        self._ser.timeout = 0.005
 
         # BOOT_ROM_START_CMD1
-        c = ''
+        c = b''
         start_time = time.time()
         timeout = False
-        while (len(c) == 0 or ord(c) != 0x5F) and not timeout:
-            self._ser.write("\xa0")
+        while (len(c) == 0 or c != b'\x5f') and not timeout:
+            self._ser.write(b"\xa0")
             self._ser.flush()
             c = self._ser.read()
 
@@ -105,42 +103,40 @@ class MtkGpsBRom:
         if timeout:
             raise RuntimeError("Timeout @ BOOT_ROM_START_CMD1")
 
-        self._ser.apply_settings({ 'timeout': 1 })
-
-        # BOOT_ROM_START_CMD2
-        self._ser.write("\x0a")
+        self._ser.timeout = 1
+        self._ser.write(b"\x0a")
         c = self._ser.read()
         if len(c) == 0:
             raise RuntimeError("TIMEOUT @ BOOT_ROM_START_CMD2")
 
-        if ord(c) != 0xF5:
+        if c[0] != 0xF5:
             raise RuntimeError("incorrect response at BOOT_ROM_START_CMD2: "
-                                "0x{:02x}".format(ord(c)))
+                                "0x{:02x}".format(c[0]))
 
         # BOOT_ROM_START_CMD3
-        self._ser.write("\x50")
+        self._ser.write(b"\x50")
         c = self._ser.read()
         if len(c) == 0:
             raise RuntimeError("TIMEOUT @ BOOT_ROM_START_CMD3")
 
-        if ord(c) != 0xAF:
+        if c[0] != 0xAF:
             raise RuntimeError("incorrect response at BOOT_ROM_START_CMD3: "
-                                "0x{:02x}".format(ord(c)))
+                                "0x{:02x}".format(c[0]))
 
         # BOOT_ROM_START_CMD4
-        self._ser.write("\x05")
+        self._ser.write(b"\x05")
         c = self._ser.read()
         if len(c) == 0:
             raise RuntimeError("TIMEOUT @ BOOT_ROM_START_CMD4")
 
-        if ord(c) != 0xFA:
+        if c[0] != 0xFA:
             raise RuntimeError("incorrect response at BOOT_ROM_START_CMD4: "
-                                "0x{:02x}".format(ord(c)))
+                                "0x{:02x}".format(c[0]))
 
     def read(self, address, length, byteSwap=False):
         """ Read data from device memory starting at 'address', reading
         'length' amount of bytes"""
-        data = ""
+        data = b""
 
         # Align start address
         if address % 4 != 0:
@@ -180,10 +176,10 @@ class MtkGpsBRom:
         if length % 2 != 0:
             raise RuntimeError("length should be a multiple of 2")
 
-        self._checked_write("\xa2")
+        self._checked_write(b"\xa2")
         self._checked_write(struct.pack(">L", address))
-        self._checked_write(struct.pack(">L", int(length/2)))
-        resp = ""
+        self._checked_write(struct.pack(">L", length // 2))
+        resp = b""
         while len(resp) < length:
             c = self._ser.read()
             if len(c) == 0:
@@ -197,10 +193,10 @@ class MtkGpsBRom:
 
         # Fix byte order
         if byteSwap:
-            resp_bs = ''
-            for i in xrange(0, len(resp), 2):
-                resp_bs += resp[i+1] + resp[i]
-            resp = resp_bs
+            resp_bs = bytearray(len(resp))
+            resp_bs[0::2] = resp[1::2]
+            resp_bs[1::2] = resp[0::2]
+            resp = bytes(resp_bs)
 
         return resp
 
@@ -214,10 +210,10 @@ class MtkGpsBRom:
         if length % 4 != 0:
             raise RuntimeError("length should be a multiple of 4")
 
-        self._checked_write("\xaf")
+        self._checked_write(b"\xaf")
         self._checked_write(struct.pack(">L", address))
-        self._checked_write(struct.pack(">L", int(length/4)))
-        resp = ""
+        self._checked_write(struct.pack(">L", length // 4))
+        resp = b""
         while len(resp) < length:
             c = self._ser.read()
             if len(c) == 0:
@@ -231,24 +227,25 @@ class MtkGpsBRom:
 
         # Fix byte order
         if byteSwap:
-            resp_bs = ''
-            for i in xrange(0, len(resp), 4):
-                resp_bs += resp[i+3] + resp[i+2] + resp[i+1] + resp[i]
-            resp = resp_bs
+            resp_bs = bytearray(len(resp))
+            resp_bs[0::4] = resp[3::4]
+            resp_bs[1::4] = resp[2::4]
+            resp_bs[2::4] = resp[1::4]
+            resp_bs[3::4] = resp[0::4]
+            resp = bytes(resp_bs)
 
         return resp
 
     def write(self, address, data, byteSwap=False):
         """ Read data from device memory starting at 'address', reading
         'length' amount of bytes"""
-
         # Align start address
         if address % 2 != 0:
-            address -= 1;
-            data = "\x00" + data
+            address -= 1
+            data = b"\x00" + data
 
         if len(data) % 2 != 0:
-            data = data + "\x00"
+            data = data + b"\x00"
 
         # Write data
         # Note: Don't split in small chunks. This does mean the checksum is
@@ -269,14 +266,14 @@ class MtkGpsBRom:
 
         # Fix byte order
         if byteSwap:
-            data_bs = ''
-            for i in xrange(0, len(data), 2):
-                data_bs += data[i+1] + data[i]
-            data = data_bs
+            data_bs = bytearray(len(data))
+            data_bs[0::2] = data[1::2]
+            data_bs[1::2] = data[0::2]
+            data = bytes(data_bs)
 
-        self._checked_write("\xa1")
+        self._checked_write(b"\xa1")
         self._checked_write(struct.pack(">L", address))
-        self._checked_write(struct.pack(">L", len(data)/2))
+        self._checked_write(struct.pack(">L", len(data) // 2))
 
         bytes_send = 0
         while bytes_send < len(data):
@@ -297,7 +294,7 @@ class MtkGpsBRom:
         if address % 4 != 0:
             raise RuntimeError("Code must be 32-bit aligned")
 
-        self._checked_write("\xa8")
+        self._checked_write(b"\xa8")
         self._checked_write(struct.pack(">L", address))
 
     def checksum(self, address, length, byteSwap=False):
@@ -309,11 +306,10 @@ class MtkGpsBRom:
 
         if length % 2 != 0:
             raise RuntimeError("length should be a multiple of 2")
-
-        self._checked_write("\xa4")
+        self._checked_write(b"\xa4")
         self._checked_write(struct.pack(">L", address))
-        self._checked_write(struct.pack(">L", int(length/2)))
-        resp = ""
+        self._checked_write(struct.pack(">L", length // 2))
+        resp = b""
         while len(resp) < 2:
             c = self._ser.read()
             if len(c) == 0:
@@ -328,16 +324,16 @@ class MtkGpsBRom:
     def _checked_write(self, data):
         """ Write 'data' to device and verify that it is echoed back """
         for b in data:
-            self._ser.write(b)
+            self._ser.write(bytes((b,)))
 
         for b in data:
             c = self._ser.read()
             if len(c) == 0:
                 raise RuntimeError("Timeout in checked_write")
 
-            if c != b:
-                raise RuntimeError("checked_write: incorrect response: "  
-                        "0x{:02x} != 0x{:02x}".format(ord(b), ord(c)))
+            if c != bytes((b,)):
+                raise RuntimeError("checked_write: incorrect response: "
+                        "0x{:02x} != 0x{:02x}".format(b, c[0]))
 
 class DownloadAgent():
     """MTK DownloadAgent interface class"""
@@ -348,10 +344,10 @@ class DownloadAgent():
 
     DA_WRITE_PACKET_LEN = 0x100
 
-    DA_ACK = '\x5a'
-    DA_NAK = '\xa5'
-    DA_CONT_CHAR = '\x69'
-    DA_SYNC_CHAR = '\xc0'
+    DA_ACK = b'\x5a'
+    DA_NAK = b'\xa5'
+    DA_CONT_CHAR = b'\x69'
+    DA_SYNC_CHAR = b'\xc0'
 
     DA_INFO_REPORT_LEN = 20
 
@@ -377,7 +373,7 @@ class DownloadAgent():
             da_code = infile.read()
 
         # Uploading DA
-        for offset in xrange(0, len(da_code), self.DA_WRITE_PACKET_LEN):
+        for offset in range(0, len(da_code), self.DA_WRITE_PACKET_LEN):
             self._progress_cb(offset, len(da_code))
 
             end = offset + self.DA_WRITE_PACKET_LEN
@@ -406,7 +402,7 @@ class DownloadAgent():
             )
         self._da_info = dict(zip(da_info_fields, struct.unpack(">BHBLHHHHL", da_info_resp)))
 
-        if self._da_info['sync_char'] != ord(self.DA_SYNC_CHAR):
+        if self._da_info['sync_char'] != self.DA_SYNC_CHAR[0]:
             raise RuntimeError("DA info SYNC_CHAR incorrect(0x{:x})".format(self._da_info['sync_char']))
 
         if self._da_info['da_version'] != 0x0400:
@@ -438,13 +434,13 @@ class DownloadAgent():
             raise RuntimeError("DA did not acknowledge command")
 
         resp = self._ser.read(1)
-        if resp != '\xcc':
+        if resp != b'\xcc':
             raise RuntimeError("Baud rate change start not received")
 
-        self._ser.apply_settings({ 'baudrate': baudrate })
+        self._ser.baudrate = baudrate
 
         resp = self._ser.read(1)
-        if resp != "\xaa":
+        if resp != b"\xaa":
             raise RuntimeError("Baud rate change done not received")
 
         self._ser.write(self.DA_SYNC_CHAR)
@@ -458,8 +454,8 @@ class DownloadAgent():
             raise RuntimeError("DA did not acknowledge command")
 
         # TODO: implement comm. check and enable
-        #for i in xrange(0, 0xff):
-        #    self._ser.write(chr(i))
+        #for i in range(0, 0xff):
+        #    self._ser.write(bytes((i,)))
         #    resp = self._ser.read(1)
 
     def _set_mem_block(self, start, length):
@@ -496,7 +492,7 @@ class DownloadAgent():
         if resp != self.DA_ACK:
             raise RuntimeError("DA did not acknowledge erase")
 
-        for block_idx in xrange(0, len(data), self.DA_WRITE_PACKET_LEN):
+        for block_idx in range(0, len(data), self.DA_WRITE_PACKET_LEN):
             self._progress_cb(block_idx, len(data))
 
             end = block_idx + self.DA_WRITE_PACKET_LEN
@@ -504,15 +500,15 @@ class DownloadAgent():
                 end = len(data)
 
             chksum = 0
-            for byte_idx in xrange(block_idx, end):
-                self._ser.write(data[byte_idx])
-                chksum += ord(data[byte_idx])
+            for byte_idx in range(block_idx, end):
+                self._ser.write(bytes((data[byte_idx],)))
+                chksum += data[byte_idx]
 
             self._ser.write(struct.pack(">H", chksum & 0xffff))
 
             resp = self._ser.read(1)
             if resp != self.DA_CONT_CHAR:
-                raise RuntimeError("Did not receive a continue character from DA(0x{:x})".format(ord(resp)))
+                raise RuntimeError("Did not receive a continue character from DA(0x{:x})".format(resp[0]))
 
         self._progress_cb(len(data), len(data))
 
@@ -525,7 +521,7 @@ class DownloadAgent():
             raise RuntimeError("DA did not acknowledge")
 
     def restart(self):
-        self._ser.write('\xd9')
+        self._ser.write(b'\xd9')
 
     def print_info(self):
         """ Print to stdout the information reported by the DA at start """
