@@ -169,16 +169,35 @@ def revert_sbas(lines):
     return cmd
 
 
+def revert_nav_threshold(lines):
+    """Rebuild a nav-threshold command; normalize chip echo to choices."""
+    got = snap_scalar(lines, "$PMTK527", 1)
+    if got is None:
+        return None
+    try:
+        best = min(NAV_THRESHOLDS, key=lambda t: abs(float(t) - float(got)))
+    except ValueError:
+        return None
+    return "nav-threshold --ms %s" % best
+
+
 def send_checked(ser, body, verbose):
     """Send a set-command, wait for its ACK, fail closed unless flag=3."""
     cmd = body.split(",")[0].replace("PMTK", "")
-    replies = query(ser, body, 3.0, verbose)
-    flag = ack_flag(replies, cmd)
     meanings = {0: "invalid packet", 1: "unsupported on this firmware",
                 2: "valid but action failed", 3: "ok"}
+    flag = None
+    replies = []
+    for attempt in (1, 2):
+        replies = query(ser, body, 3.0, verbose)
+        flag = ack_flag(replies, cmd)
+        if flag is not None:
+            break
+        if attempt == 1:
+            print("no ACK for PMTK%s, retrying once" % cmd, file=sys.stderr)
     if flag is None:
-        print("no ACK for PMTK%s (replies: %s)" % (cmd, replies or "none"),
-              file=sys.stderr)
+        print("no ACK for PMTK%s after retry (replies: %s)"
+              % (cmd, replies or "none"), file=sys.stderr)
         return 1
     print("PMTK%s: %s (flag=%d)" % (cmd, meanings.get(flag, "?"), flag))
     return 0 if flag == 3 else 1
@@ -507,8 +526,7 @@ def main(argv=None):
         if args.cmd == "nav-threshold":
             return execute(args, ["PMTK386,%s" % args.ms], ["PMTK447"],
                            check_nav_threshold(args.ms),
-                           revert_scalar("nav-threshold --ms",
-                                         "$PMTK527", 1, lambda v: v))
+                           revert_nav_threshold)
         if args.cmd == "qzss":
             if args.nmea is None and args.func is None:
                 print("nothing to do: pass --nmea and/or --func")
